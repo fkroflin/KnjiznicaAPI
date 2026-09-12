@@ -2,6 +2,7 @@
 using KnjiznicaAPI.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using KnjiznicaAPI.DTOs;
 
 namespace KnjiznicaAPI.Controllers
 {
@@ -17,11 +18,17 @@ namespace KnjiznicaAPI.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Zanrovi>>> GetZanrovi()
+        public async Task<ActionResult<IEnumerable<ZanrDto>>> GetZanrovi()
         {
             var zanrovi = await _context.Zanrovi
-                .Include(z => z.Knjige)
+                .Select(z => new ZanrDto
+                {
+                    Id = z.Id,
+                    ImeZanra = z.imeZanra,
+                    Knjige = z.Knjige.Select(k => k.nazivKnjige).ToList()
+                })
                 .ToListAsync();
+
             return Ok(zanrovi);
         }
 
