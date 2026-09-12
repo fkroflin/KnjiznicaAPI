@@ -19,14 +19,18 @@ namespace KnjiznicaAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Zanrovi>>> GetZanrovi()
         {
-            var zanrovi = await _context.Zanrovi.ToListAsync();
+            var zanrovi = await _context.Zanrovi
+                .Include(z => z.Knjige)
+                .ToListAsync();
             return Ok(zanrovi);
         }
 
         [HttpGet("{id}")]
         public async Task<ActionResult<Zanrovi>> GetZanr(int id)
         {
-            var zanr = await _context.Zanrovi.FindAsync(id);
+            var zanr = await _context.Zanrovi
+                .Include(z => z.Knjige)
+                .FirstOrDefaultAsync(z => z.Id == id);
 
             if (zanr == null)
             {
