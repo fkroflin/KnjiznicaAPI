@@ -1,4 +1,5 @@
 ﻿using KnjiznicaAPI.Data;
+using KnjiznicaAPI.DTOs;
 using KnjiznicaAPI.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,7 @@ namespace KnjiznicaAPI.Controllers
     [ApiController]
     public class BooksController : ControllerBase
     {
+        // Connection to the SQL database via Entity Framework Core
         private readonly AppDbContext _context;
 
         public BooksController(AppDbContext context)
@@ -17,23 +19,37 @@ namespace KnjiznicaAPI.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Knjige>>> GetBooks()
+        public async Task<ActionResult<IEnumerable<KnjigaDto>>> GetBooks()
         {
             var knjige = await _context.Knjige
-                .Include(k => k.AutorKnjige)
-                .Include(k => k.Zanrovi)
+                .Select(k => new KnjigaDto
+                {
+                    Id = k.Id,
+                    NazivKnjige = k.nazivKnjige,
+                    DatumUnosa = k.datumUnosa,
+                    ImeAutora = k.AutorKnjige != null ? k.AutorKnjige.imeAutora : "Nepoznat autor",
+                    Zanrovi = k.Zanrovi.Select(z => z.imeZanra).ToList()
+                })
                 .ToListAsync();
 
             return Ok(knjige);
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<Knjige>> GetBook(int id)
+        public async Task<ActionResult<KnjigaDto>> GetBook(int id)
         {
+            // Search for one book matching the given ID and transform it to KnjigaDto
             var knjiga = await _context.Knjige
-                .Include(k => k.AutorKnjige)
-                .Include(k => k.Zanrovi)
-                .FirstOrDefaultAsync(k => k.Id == id);
+                .Where(k => k.Id == id)
+                .Select(k => new KnjigaDto
+                {
+                    Id = k.Id,
+                    NazivKnjige = k.nazivKnjige,
+                    DatumUnosa = k.datumUnosa,
+                    ImeAutora = k.AutorKnjige != null ? k.AutorKnjige.imeAutora : "Nepoznat autor",
+                    Zanrovi = k.Zanrovi.Select(z => z.imeZanra).ToList()
+                })
+                .FirstOrDefaultAsync();
 
             if (knjiga == null)
             {
@@ -44,32 +60,57 @@ namespace KnjiznicaAPI.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<Knjige>> CreateBook(string nazivKnjige, int autorKnjigeId, [FromQuery] List<int> zanrIds)
+        public async Task<ActionResult<KnjigaDto>> CreateBook(string nazivKnjige, string imeAutora, [FromQuery] List<string> imenaZanrova)
         {
             if (string.IsNullOrWhiteSpace(nazivKnjige))
             {
                 return BadRequest("Naziv knjige ne smije biti prazan.");
             }
 
-            var autorPostoji = await _context.AutoriKnjiga.AnyAsync(a => a.Id == autorKnjigeId);
-            if (!autorPostoji)
+            if (string.IsNullOrWhiteSpace(imeAutora))
             {
-                return BadRequest($"Autor s ID-em {autorKnjigeId} ne postoji u bazi.");
+                return BadRequest("Ime autora ne smije biti prazno.");
             }
 
-            var odabraniZanrovi = await _context.Zanrovi
-                .Where(z => zanrIds.Contains(z.Id))
-                .ToListAsync();
+            var autor = await _context.AutoriKnjiga
+                .FirstOrDefaultAsync(a => a.imeAutora.ToLower() == imeAutora.Trim().ToLower());
 
-            if (odabraniZanrovi.Count != zanrIds.Distinct().Count())
+            if (autor == null)
             {
-                return BadRequest("Jedan ili više poslanih žanr ID-eva ne postoje u bazi.");
+                autor = new AutorKnjige
+                {
+                    imeAutora = imeAutora.Trim(),
+                    godinaRodenja = 0 // Podrazumijevana vrijednost ako autor još ne postoji
+                };
+                _context.AutoriKnjiga.Add(autor);
+                await _context.SaveChangesAsync();
+            }
+
+            var odabraniZanrovi = new List<Zanrovi>();
+            foreach (var imeZanra in imenaZanrova.Distinct())
+            {
+                if (string.IsNullOrWhiteSpace(imeZanra)) continue;
+
+                var cistoIme = imeZanra.Trim();
+
+                // Search if this genre already exists in the database
+                var zanr = await _context.Zanrovi
+                    .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cistoIme.ToLower());
+
+                if (zanr == null)
+                {
+                    zanr = new Zanrovi { imeZanra = cistoIme };
+                    _context.Zanrovi.Add(zanr);
+                    await _context.SaveChangesAsync();
+                }
+
+                odabraniZanrovi.Add(zanr);
             }
 
             var novaKnjiga = new Knjige
             {
-                nazivKnjige = nazivKnjige,
-                AutorKnjigeId = autorKnjigeId,
+                nazivKnjige = nazivKnjige.Trim(),
+                AutorKnjigeId = autor.Id,
                 datumUnosa = DateTime.UtcNow,
                 Zanrovi = odabraniZanrovi
             };
@@ -77,18 +118,22 @@ namespace KnjiznicaAPI.Controllers
             _context.Knjige.Add(novaKnjiga);
             await _context.SaveChangesAsync();
 
-            // Učitavamo potpunu knjigu s navigacijskim svojstvima za odgovor
-            var kreiranaKnjiga = await _context.Knjige
-                .Include(k => k.AutorKnjige)
-                .Include(k => k.Zanrovi)
-                .FirstOrDefaultAsync(k => k.Id == novaKnjiga.Id);
+            var rezultatDto = new KnjigaDto
+            {
+                Id = novaKnjiga.Id,
+                NazivKnjige = novaKnjiga.nazivKnjige,
+                DatumUnosa = novaKnjiga.datumUnosa,
+                ImeAutora = autor.imeAutora,
+                Zanrovi = odabraniZanrovi.Select(z => z.imeZanra).ToList()
+            };
 
-            return CreatedAtAction(nameof(GetBook), new { id = novaKnjiga.Id }, kreiranaKnjiga);
+            return CreatedAtAction(nameof(GetBook), new { id = novaKnjiga.Id }, rezultatDto);
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateBook(int id, string nazivKnjige, int autorKnjigeId, [FromQuery] List<int> zanrIds)
+        public async Task<IActionResult> UpdateBook(int id, string nazivKnjige, string imeAutora, [FromQuery] List<string> imenaZanrova)
         {
+            // Find existing book in DB, INCLUDING its connected genres list
             var knjiga = await _context.Knjige
                 .Include(k => k.Zanrovi)
                 .FirstOrDefaultAsync(k => k.Id == id);
@@ -98,29 +143,47 @@ namespace KnjiznicaAPI.Controllers
                 return NotFound($"Knjiga s ID-em {id} ne postoji u bazi.");
             }
 
-            if (string.IsNullOrWhiteSpace(nazivKnjige))
+            if (string.IsNullOrWhiteSpace(nazivKnjige) || string.IsNullOrWhiteSpace(imeAutora))
             {
-                return BadRequest("Naziv knjige ne smije biti prazan.");
+                return BadRequest("Naziv knjige i ime autora ne smiju biti prazni.");
             }
 
-            var autorPostoji = await _context.AutoriKnjiga.AnyAsync(a => a.Id == autorKnjigeId);
-            if (!autorPostoji)
+            var autor = await _context.AutoriKnjiga
+                .FirstOrDefaultAsync(a => a.imeAutora.ToLower() == imeAutora.Trim().ToLower());
+
+            if (autor == null)
             {
-                return BadRequest($"Autor s ID-em {autorKnjigeId} ne postoji u bazi.");
+                autor = new AutorKnjige
+                {
+                    imeAutora = imeAutora.Trim(),
+                    godinaRodenja = 0
+                };
+                _context.AutoriKnjiga.Add(autor);
+                await _context.SaveChangesAsync();
             }
 
-            var odabraniZanrovi = await _context.Zanrovi
-                .Where(z => zanrIds.Contains(z.Id))
-                .ToListAsync();
-
-            if (odabraniZanrovi.Count != zanrIds.Distinct().Count())
+            var noviZanrovi = new List<Zanrovi>();
+            foreach (var imeZanra in imenaZanrova.Distinct())
             {
-                return BadRequest("Jedan ili više poslanih žanr ID-eva ne postoje u bazi.");
+                if (string.IsNullOrWhiteSpace(imeZanra)) continue;
+
+                var cistoIme = imeZanra.Trim();
+                var zanr = await _context.Zanrovi
+                    .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cistoIme.ToLower());
+
+                if (zanr == null)
+                {
+                    zanr = new Zanrovi { imeZanra = cistoIme };
+                    _context.Zanrovi.Add(zanr);
+                    await _context.SaveChangesAsync();
+                }
+
+                noviZanrovi.Add(zanr);
             }
 
-            knjiga.nazivKnjige = nazivKnjige;
-            knjiga.AutorKnjigeId = autorKnjigeId;
-            knjiga.Zanrovi = odabraniZanrovi; 
+            knjiga.nazivKnjige = nazivKnjige.Trim();
+            knjiga.AutorKnjigeId = autor.Id;
+            knjiga.Zanrovi = noviZanrovi;
 
             await _context.SaveChangesAsync();
 
@@ -137,6 +200,7 @@ namespace KnjiznicaAPI.Controllers
                 return NotFound($"Knjiga s ID-em {id} ne postoji u bazi.");
             }
 
+            // Mark book for deletion and save changes
             _context.Knjige.Remove(knjiga);
             await _context.SaveChangesAsync();
 
