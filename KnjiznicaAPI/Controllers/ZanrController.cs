@@ -17,6 +17,7 @@ namespace KnjiznicaAPI.Controllers
             _context = context;
         }
 
+        // Maps genres to ZanrDto to prevent cycle serialization errors
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ZanrDto>>> GetZanrovi()
         {
@@ -25,6 +26,7 @@ namespace KnjiznicaAPI.Controllers
                 {
                     Id = z.Id,
                     ImeZanra = z.imeZanra,
+                    // Selects only the title strings of connected books
                     Knjige = z.Knjige.Select(k => k.nazivKnjige).ToList()
                 })
                 .ToListAsync();

@@ -44,6 +44,7 @@ namespace KnjiznicaAPI.Controllers
                 return BadRequest("Ime autora ne smije biti prazno.");
             }
 
+            // Case-insensitive check to prevent adding existing authors with the same name
             var autorPostoji = await _context.AutoriKnjiga
                 .AnyAsync(a => a.imeAutora.ToLower() == imeAutora.Trim().ToLower());
 
