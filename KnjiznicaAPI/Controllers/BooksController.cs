@@ -129,7 +129,7 @@ namespace KnjiznicaAPI.Controllers
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateBook(int id, string nazivKnjige, string imeAutora, [FromQuery] List<string> zanrovi)
+        public async Task<IActionResult> UpdateBook(int id, string? nazivKnjige, string? imeAutora, [FromQuery] List<string>? zanrovi)
         {
             // Find existing book in DB, INCLUDING its connected genres list
             var knjiga = await _context.Knjige
@@ -142,26 +142,27 @@ namespace KnjiznicaAPI.Controllers
                 return NotFound($"Knjiga s ID-em {id} ne postoji u bazi.");
             }
 
-            if (string.IsNullOrWhiteSpace(nazivKnjige) || string.IsNullOrWhiteSpace(imeAutora))
+            if (!string.IsNullOrWhiteSpace(nazivKnjige))
             {
-                return BadRequest("Naziv knjige i ime autora ne smiju biti prazni.");
+                knjiga.nazivKnjige = nazivKnjige.Trim();
             }
 
-            var autor = await _context.AutoriKnjiga
-                .FirstOrDefaultAsync(a => a.imeAutora.ToLower() == imeAutora.Trim().ToLower());
-
-            if (autor == null)
+            if (!string.IsNullOrWhiteSpace(imeAutora))
             {
-                autor = new AutorKnjige
+                var cleanAutorName = imeAutora.Trim();
+                var autor = await _context.AutoriKnjiga
+                    .FirstOrDefaultAsync(a => a.imeAutora.ToLower() == cleanAutorName.ToLower());
+
+                if (autor == null)
                 {
-                    imeAutora = imeAutora.Trim(),
-                    godinaRodenja = 0
-                };
-                _context.AutoriKnjiga.Add(autor);
-                await _context.SaveChangesAsync();
+                    autor = new AutorKnjige { imeAutora = cleanAutorName };
+                    _context.AutoriKnjiga.Add(autor);
+                }
+
+                knjiga.AutorKnjige = autor;
             }
 
-            knjiga.Zanrovi.Clear(); // Clear current connections in join table
+
             if (zanrovi != null && zanrovi.Any())
             {
                 foreach (var zanrName in zanrovi)
@@ -170,7 +171,7 @@ namespace KnjiznicaAPI.Controllers
 
                     var cleanZanrName = zanrName.Trim();
 
-                    // Provjeri postoji li žanr u bazi općenito
+                    // Find the genre in the database or create it if it doesn't exist
                     var genre = await _context.Zanrovi
                         .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cleanZanrName.ToLower());
 
@@ -180,7 +181,7 @@ namespace KnjiznicaAPI.Controllers
                         _context.Zanrovi.Add(genre);
                     }
 
-                    // Dodaj ga knjizi SAMO ako ga knjiga već nema u svojoj listi
+                    // Add a genre to the book only if it doesn't already have one
                     if (!knjiga.Zanrovi.Any(z => z.imeZanra.ToLower() == cleanZanrName.ToLower()))
                     {
                         knjiga.Zanrovi.Add(genre);
