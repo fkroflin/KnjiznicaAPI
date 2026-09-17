@@ -37,9 +37,16 @@ namespace KnjiznicaAPI.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Zanrovi>> GetZanr(int id)
         {
-            var zanr = await _context.Zanrovi
-                .Include(z => z.Knjige)
-                .FirstOrDefaultAsync(z => z.Id == id);
+            // Retrieves a single genre with connected book titles mapped to ZanrDto
+            var zanr = await _context.Zanrovi.
+                Where(z => z.Id == id)
+                .Select(z => new ZanrDto
+                {
+                    Id = z.Id,
+                    ImeZanra = z.imeZanra,
+                    Knjige = z.Knjige.Select(k => k.nazivKnjige).ToList()
+                })
+                .FirstOrDefaultAsync();
 
             if (zanr == null)
             {

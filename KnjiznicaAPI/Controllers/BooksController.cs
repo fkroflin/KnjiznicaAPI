@@ -60,7 +60,7 @@ namespace KnjiznicaAPI.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<KnjigaDto>> CreateBook(string nazivKnjige, string imeAutora, [FromQuery] List<string> imenaZanrova)
+        public async Task<ActionResult<KnjigaDto>> CreateBook(string nazivKnjige, string imeAutora, [FromQuery] List<string> zanrovi)
         {
             if (string.IsNullOrWhiteSpace(nazivKnjige))
             {
@@ -72,70 +72,69 @@ namespace KnjiznicaAPI.Controllers
                 return BadRequest("Ime autora ne smije biti prazno.");
             }
 
-            var autor = await _context.AutoriKnjiga
+            var cleanBookTitle = nazivKnjige.Trim();
+            var cleanAuthorName = imeAutora.Trim();
+
+            var author = await _context.AutoriKnjiga
                 .FirstOrDefaultAsync(a => a.imeAutora.ToLower() == imeAutora.Trim().ToLower());
 
-            if (autor == null)
+            if (author == null)
             {
-                autor = new AutorKnjige
-                {
-                    imeAutora = imeAutora.Trim(),
-                    godinaRodenja = 0 // Podrazumijevana vrijednost ako autor još ne postoji
-                };
-                _context.AutoriKnjiga.Add(autor);
-                await _context.SaveChangesAsync();
+                author = new AutorKnjige { imeAutora = cleanAuthorName };
+                _context.AutoriKnjiga.Add(author);
             }
 
-            var odabraniZanrovi = new List<Zanrovi>();
-            foreach (var imeZanra in imenaZanrova.Distinct())
+            // 2. Find or create Genres
+            var bookGenres = new List<Zanrovi>();
+            if (zanrovi != null && zanrovi.Any())
             {
-                if (string.IsNullOrWhiteSpace(imeZanra)) continue;
-
-                var cistoIme = imeZanra.Trim();
-
-                // Search if this genre already exists in the database
-                var zanr = await _context.Zanrovi
-                    .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cistoIme.ToLower());
-
-                if (zanr == null)
+                foreach (var zanrName in zanrovi)
                 {
-                    zanr = new Zanrovi { imeZanra = cistoIme };
-                    _context.Zanrovi.Add(zanr);
-                    await _context.SaveChangesAsync();
+                    if (string.IsNullOrWhiteSpace(zanrName)) continue;
+
+                    var cleanZanrName = zanrName.Trim();
+                    var genre = await _context.Zanrovi
+                        .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cleanZanrName.ToLower());
+
+                    if (genre == null)
+                    {
+                        genre = new Zanrovi { imeZanra = cleanZanrName };
+                        _context.Zanrovi.Add(genre);
+                    }
+
+                    bookGenres.Add(genre);
                 }
-
-                odabraniZanrovi.Add(zanr);
             }
 
-            var novaKnjiga = new Knjige
+            // 3. Create Book
+            var newBook = new Knjige
             {
-                nazivKnjige = nazivKnjige.Trim(),
-                AutorKnjigeId = autor.Id,
-                datumUnosa = DateTime.UtcNow,
-                Zanrovi = odabraniZanrovi
+                nazivKnjige = cleanBookTitle,
+                AutorKnjige = author,
+                Zanrovi = bookGenres
             };
 
-            _context.Knjige.Add(novaKnjiga);
+            _context.Knjige.Add(newBook);
             await _context.SaveChangesAsync();
 
-            var rezultatDto = new KnjigaDto
+            var resultDto = new KnjigaDto
             {
-                Id = novaKnjiga.Id,
-                NazivKnjige = novaKnjiga.nazivKnjige,
-                DatumUnosa = novaKnjiga.datumUnosa,
-                ImeAutora = autor.imeAutora,
-                Zanrovi = odabraniZanrovi.Select(z => z.imeZanra).ToList()
+                Id = newBook.Id,
+                NazivKnjige = newBook.nazivKnjige,
+                ImeAutora = author.imeAutora,
+                Zanrovi = bookGenres.Select(z => z.imeZanra).ToList()
             };
 
-            return CreatedAtAction(nameof(GetBook), new { id = novaKnjiga.Id }, rezultatDto);
+            return CreatedAtAction(nameof(GetBook), new { id = newBook.Id }, resultDto);
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateBook(int id, string nazivKnjige, string imeAutora, [FromQuery] List<string> imenaZanrova)
+        public async Task<IActionResult> UpdateBook(int id, string nazivKnjige, string imeAutora, [FromQuery] List<string> zanrovi)
         {
             // Find existing book in DB, INCLUDING its connected genres list
             var knjiga = await _context.Knjige
                 .Include(k => k.Zanrovi)
+                .Include(k => k.AutorKnjige)
                 .FirstOrDefaultAsync(k => k.Id == id);
 
             if (knjiga == null)
@@ -162,28 +161,26 @@ namespace KnjiznicaAPI.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            var noviZanrovi = new List<Zanrovi>();
-            foreach (var imeZanra in imenaZanrova.Distinct())
+            knjiga.Zanrovi.Clear(); // Clear current connections in join table
+            if (zanrovi != null && zanrovi.Any())
             {
-                if (string.IsNullOrWhiteSpace(imeZanra)) continue;
-
-                var cistoIme = imeZanra.Trim();
-                var zanr = await _context.Zanrovi
-                    .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cistoIme.ToLower());
-
-                if (zanr == null)
+                foreach (var zanrName in zanrovi)
                 {
-                    zanr = new Zanrovi { imeZanra = cistoIme };
-                    _context.Zanrovi.Add(zanr);
-                    await _context.SaveChangesAsync();
+                    if (string.IsNullOrWhiteSpace(zanrName)) continue;
+
+                    var cleanZanrName = zanrName.Trim();
+                    var genre = await _context.Zanrovi
+                        .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cleanZanrName.ToLower());
+
+                    if (genre == null)
+                    {
+                        genre = new Zanrovi { imeZanra = cleanZanrName };
+                        _context.Zanrovi.Add(genre);
+                    }
+
+                    knjiga.Zanrovi.Add(genre);
                 }
-
-                noviZanrovi.Add(zanr);
             }
-
-            knjiga.nazivKnjige = nazivKnjige.Trim();
-            knjiga.AutorKnjigeId = autor.Id;
-            knjiga.Zanrovi = noviZanrovi;
 
             await _context.SaveChangesAsync();
 
