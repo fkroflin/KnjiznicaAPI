@@ -84,7 +84,7 @@ namespace KnjiznicaAPI.Controllers
                 _context.AutoriKnjiga.Add(author);
             }
 
-            // 2. Find or create Genres
+            // Find or create Genres
             var bookGenres = new List<Zanrovi>();
             if (zanrovi != null && zanrovi.Any())
             {
@@ -106,7 +106,7 @@ namespace KnjiznicaAPI.Controllers
                 }
             }
 
-            // 3. Create Book
+            // Create Book
             var newBook = new Knjige
             {
                 nazivKnjige = cleanBookTitle,
