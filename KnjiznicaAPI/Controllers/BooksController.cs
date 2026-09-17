@@ -80,7 +80,7 @@ namespace KnjiznicaAPI.Controllers
 
             if (author == null)
             {
-                author = new AutorKnjige { imeAutora = cleanAuthorName };
+                author = new AutorKnjige { imeAutora = cleanAuthorName};
                 _context.AutoriKnjiga.Add(author);
             }
 
@@ -155,7 +155,7 @@ namespace KnjiznicaAPI.Controllers
 
                 if (autor == null)
                 {
-                    autor = new AutorKnjige { imeAutora = cleanAutorName };
+                    autor = new AutorKnjige { imeAutora = cleanAutorName};
                     _context.AutoriKnjiga.Add(autor);
                 }
 

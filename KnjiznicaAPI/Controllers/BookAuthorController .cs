@@ -65,6 +65,31 @@ namespace KnjiznicaAPI.Controllers
             return CreatedAtAction(nameof(GetBookAuthor), new { id = noviAutor.Id }, noviAutor);
         }
 
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateAutor(int id, string? imeAutora, int? godinaRodenja)
+        {
+            var autor = await _context.AutoriKnjiga.FindAsync(id);
+
+            if (autor == null)
+            {
+                return NotFound($"Autor s ID-em {id} nije pronađen.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(imeAutora))
+            {
+                autor.imeAutora = imeAutora.Trim();
+            }
+
+            if (godinaRodenja.HasValue)
+            {
+                autor.godinaRodenja = godinaRodenja.Value;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteBookAuthor(int id)
         {
