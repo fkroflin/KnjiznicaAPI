@@ -64,15 +64,32 @@ namespace KnjiznicaAPI.Controllers
                 return BadRequest("Naziv žanra ne smije biti prazan.");
             }
 
-            var noviZanr = new Zanrovi
+            var cleanName = imeZanra.Trim();
+
+            var existingGenre = await _context.Zanrovi
+                .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cleanName.ToLower());
+
+            if (existingGenre != null)
             {
-                imeZanra = imeZanra
+                return BadRequest($"Genre '{cleanName}' already exists.");
+            }
+
+            var newGenre = new Zanrovi
+            {
+                imeZanra = cleanName
             };
 
-            _context.Zanrovi.Add(noviZanr);
+            _context.Zanrovi.Add(newGenre);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetZanr), new { id = noviZanr.Id }, noviZanr);
+            var zanrDto = new ZanrDto
+            {
+                Id = newGenre.Id,
+                ImeZanra = newGenre.imeZanra,
+                Knjige = new List<string>()
+            };
+
+            return CreatedAtAction(nameof(GetZanr), new { id = newGenre.Id }, zanrDto);
         }
 
         [HttpPut("{id}")]

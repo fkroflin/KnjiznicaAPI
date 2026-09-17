@@ -169,6 +169,8 @@ namespace KnjiznicaAPI.Controllers
                     if (string.IsNullOrWhiteSpace(zanrName)) continue;
 
                     var cleanZanrName = zanrName.Trim();
+
+                    // Provjeri postoji li žanr u bazi općenito
                     var genre = await _context.Zanrovi
                         .FirstOrDefaultAsync(z => z.imeZanra.ToLower() == cleanZanrName.ToLower());
 
@@ -178,7 +180,11 @@ namespace KnjiznicaAPI.Controllers
                         _context.Zanrovi.Add(genre);
                     }
 
-                    knjiga.Zanrovi.Add(genre);
+                    // Dodaj ga knjizi SAMO ako ga knjiga već nema u svojoj listi
+                    if (!knjiga.Zanrovi.Any(z => z.imeZanra.ToLower() == cleanZanrName.ToLower()))
+                    {
+                        knjiga.Zanrovi.Add(genre);
+                    }
                 }
             }
 
